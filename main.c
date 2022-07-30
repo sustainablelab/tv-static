@@ -68,7 +68,7 @@ AffPoint aff_meet_of_lines(AffLine l1, AffLine l2)
 
 // View polygon artwork
 AffPoint view_o = {100, 100};                                   // origin
-int view_s = 100;                                               // scale
+int view_s = 20;                                                // scale
 // DEBUG by moving scanline manually
 int Y = 0;                                                      // scanline y set by UI
 
@@ -100,16 +100,19 @@ int main(int argc, char *argv[])
         SDL_GetWindowSize(win, &wI.w, &wI.h);                   // Get new window size
 
         // Procedurally generated art
-        int poly_cnt = 6; AffPoint *poly;                       // Polygon
+        int poly_cnt = 9; AffPoint *poly;                       // Polygon
         {
             poly = malloc(sizeof(AffPoint)*poly_cnt);           // Alloc mem for polygon
 
             poly[0] = (AffPoint){0, 1};
             poly[1] = (AffPoint){2, 0};
-            poly[2] = (AffPoint){2, 4};
-            poly[3] = (AffPoint){0, 5};
-            poly[4] = (AffPoint){-1, 2};
-            poly[5] = poly[0];
+            poly[2] = (AffPoint){1, 1.5};
+            poly[3] = (AffPoint){2, 2.5};
+            poly[4] = (AffPoint){3, 2.5};
+            poly[5] = (AffPoint){2, 4};
+            poly[6] = (AffPoint){0, 5};
+            poly[7] = (AffPoint){-1, 2};
+            poly[8] = poly[0];
         }
         { // map poly from model to view
             for( int i=0; i<poly_cnt; i++ )
@@ -164,11 +167,11 @@ int main(int argc, char *argv[])
                         case SDLK_ESCAPE: quit = true; break;
                         case SDLK_UP:
                               if(  kmod&KMOD_CTRL  )
-                              { Y-=2; if(Y<topmost.y) {Y=topmost.y;} }
+                              { Y--; if(Y<topmost.y) {Y=topmost.y;} }
                               break;
                         case SDLK_DOWN:
                               if(  kmod&KMOD_CTRL  )
-                              { Y+=2; if(Y>botmost.y) {Y=botmost.y;} }
+                              { Y++; if(Y>botmost.y) {Y=botmost.y;} }
                               break;
                         default: break;
                     }
@@ -236,7 +239,9 @@ int main(int argc, char *argv[])
                 sides[i] = aff_join_of_points(poly[i], poly[i+1]);
             }
             // Up/Down UI checks that Y is between topmost and botmost
-            AffLine scanline = {0, 1, Y};                   // line : y = Y
+            AffLine scanline = {0, 1, Y};                       // line : y = Y
+            int meet_cnt = 0;                                   // count intersections
+            AffPoint meets[poly_cnt];                           // at most 1 meet per poly seg
             for( int i=0; i<(poly_cnt-1); i++ )
             {
                 AffPoint meet = aff_meet_of_lines(scanline, sides[i]);
@@ -249,6 +254,12 @@ int main(int argc, char *argv[])
                 else             { lambda = u.y / v.y; }    // Use vec.y if vec.x is 0
                 if(  (lambda >= 0)&&(lambda <= 1)  )        // The meet is on the poly seg
                 {
+                    // TODO:
+                    // Instead of drawing the debug stuff below:
+                    // count the number of intersections
+                    // for now just handle the case that there are two
+                    // if there are not exactly two, do nothing for now
+                    // then take those two intersections and draw a line
                     { // highlight meet
                         SDL_SetRenderDrawColor(ren, 100, 200, 10, 180);
                         SDL_FRect r = {meet.x - 2, meet.y - 2, 4, 4};
@@ -262,15 +273,35 @@ int main(int argc, char *argv[])
                     { // draw vector u
                         SDL_RenderDrawLineF(ren, poly[i].x, poly[i].y, meet.x, meet.y);
                     }
+                    meets[meet_cnt] = meet;                     // Store meets
+                    meet_cnt++;                                 // Track number of meets
                 }
-                /* // Draw the portions of the scan line that are inside the polygon */
-                /* SDL_RenderDrawLineF(ren, wI.w/2, y, wI.w, y); */
+            }
+            // Draw the scanline
+            SDL_SetRenderDrawColor(ren, 200, 200, 200, 180);     // Set fill color
+            SDL_RenderDrawLineF(ren, wI.w/2, Y, wI.w, Y);
+
+            /* *************>2 meets?***************
+             * if(  meet_cnt >= 2  )                            // 2 or more meets : draw fill
+             * Yes, it is possible to have three meets when the scanline hits a
+             * vertex. The vertex is the endpoint of two segments, so we have a
+             * scenario where lambda is 0 for one of those segments, and lambda
+             * is 1 for the other segment. The third meet is on the other line
+             * that the scanline passes through.
+             *
+             * And we do *not* want to draw a line if there are less than 2
+             * meets because then we don't have a second point for the line.
+             *
+             * Note : the for loop ensures there are at least 2 meets.
+             * *******************************/
+            { // Draw the portions of the scan line that are inside the polygon
+                for( int i=0; i<meet_cnt-1; i++ )
+                {
+                    SDL_SetRenderDrawColor(ren, 200, 100, 10, 180);     // Set fill color
+                    SDL_RenderDrawLineF(ren, meets[i].x, meets[i].y, meets[i+1].x, meets[i+1].y);
+                }
             }
 
-            // Draw the scanline
-            SDL_SetRenderDrawColor(ren, 200, 100, 10, 180);     // Set fill color
-            // TODO: draw the portions of the scan line that are inside the polygon
-            SDL_RenderDrawLineF(ren, wI.w/2, Y, wI.w, Y);
         }
         
         free(poly);                                         // Free mem for polygon
