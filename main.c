@@ -2,7 +2,12 @@
 #include <stdbool.h>
 #include "main.h"
 #include "window_info.h"
-#include "rand.h"
+
+typedef SDL_FPoint AffPoint;
+
+// View polygon artwork
+AffPoint view_o = {100, 100};                                   // origin
+int view_s = 100;                                               // scale
 
 void shutdown()
 {
@@ -16,7 +21,6 @@ int main(int argc, char *argv[])
     for(int i=0; i<argc; i++) {puts(argv[i]);}
 
     // Setup
-    rand_init();                                                // seed rand()
     SDL_Init(SDL_INIT_VIDEO);
     WindowInfo wI; WindowInfo_setup(&wI, argc, argv);           // Init game window info
     win = SDL_CreateWindow(argv[0], wI.x, wI.y, wI.w, wI.h, wI.flags);
@@ -25,7 +29,6 @@ int main(int argc, char *argv[])
 
     // Game state
     bool quit = false;
-    int tv_max = 255;                                           // TV alpha max (brightness)
     // Game loop
     while(  quit == false  )
     {
@@ -34,25 +37,43 @@ int main(int argc, char *argv[])
         SDL_GetWindowSize(win, &wI.w, &wI.h);                   // Get new window size
 
         // Procedurally generated art
-        int count = 5000; SDL_FPoint *tv_noise; int *tv_alpha;// Rand points w rand alpha
-        { // Allocate mem for procedural art
-            tv_noise = malloc(sizeof(SDL_FPoint)*count);          // Point locations
-            tv_alpha = malloc(sizeof(int)*count);           // Point alpha transparency
+        int poly_cnt = 5; AffPoint *poly;                       // Polygon
+        {
+            poly = malloc(sizeof(AffPoint)*poly_cnt);           // Alloc mem for polygon
+
+            poly[0] = (AffPoint){0, 0};
+            poly[1] = (AffPoint){2, 0};
+            poly[2] = (AffPoint){2, 4};
+            poly[3] = (AffPoint){0, 4};
+            poly[4] = poly[0];
         }
-        { // Generate TV Static
-            for(int i=0; i<count; i++)
+        { // map poly from model to view
+            for( int i=0; i<poly_cnt; i++ )
             {
-                tv_noise[i] = (SDL_FPoint){wI.w/2 + rand_pm(wI.w/2), wI.h/2 + rand_pm(wI.h/2)};
-                tv_alpha[i] = rand_0_to_max(tv_max);
+                poly[i].x *= view_s;
+                poly[i].y *= view_s;
+                poly[i].x += view_o.x;
+                poly[i].y += view_o.y;
             }
         }
 
         // UI
+        SDL_Keymod kmod = SDL_GetModState();
         { // Filtered (rapid fire keys)
             SDL_PumpEvents();
             const Uint8 *k = SDL_GetKeyboardState(NULL);        // Get all keys
-            if(  k[SDL_SCANCODE_UP]  ) {tv_max++; if(tv_max>255) {tv_max=255;}}
-            if(  k[SDL_SCANCODE_DOWN]  ) {tv_max--; if(tv_max<0) {tv_max=0;}}
+            if(  kmod&KMOD_SHIFT  )
+            {
+                if(  k[SDL_SCANCODE_UP]  ) {view_s++; if(view_s>500) {view_s=500;}}
+                if(  k[SDL_SCANCODE_DOWN]  ) {view_s--; if(view_s<1) {view_s=1;}}
+            }
+            else
+            {
+                if(  k[SDL_SCANCODE_UP]  ) {view_o.y-=2; if(view_o.y<0) {view_o.y=0;}}
+                if(  k[SDL_SCANCODE_DOWN]  ) {view_o.y+=2; if(view_o.y>wI.h) {view_o.y=wI.h;}}
+                if(  k[SDL_SCANCODE_LEFT]  ) {view_o.x-=2; if(view_o.x<0) {view_o.x=0;}}
+                if(  k[SDL_SCANCODE_RIGHT]  ) {view_o.x+=2; if(view_o.x>wI.w) {view_o.x=wI.w;}}
+            }
         }
         { // Polled
             SDL_Event e;
@@ -74,16 +95,10 @@ int main(int argc, char *argv[])
             SDL_SetRenderDrawColor(ren, 10, 10, 10, 0);          // Alpha doesn't matter here
             SDL_RenderClear(ren);
         }
-        { // Draw the TV Static
-            for(int i=0; i<count; i++)
-            {
-                SDL_SetRenderDrawColor(ren, 255, 255, 255, tv_alpha[i]);
-                SDL_RenderDrawPointF(ren, tv_noise[i].x, tv_noise[i].y);
-            }
-        }
-        { // Free mem for old proc art
-            free(tv_noise);
-            free(tv_alpha);
+        { // Draw Polygon
+            SDL_SetRenderDrawColor(ren, 255, 100, 10, 255);      // Alpha doesn't matter here
+            SDL_RenderDrawLinesF(ren, poly, poly_cnt);
+            free(poly);                                         // Free mem for polygon
         }
         { // Display to screen
             SDL_RenderPresent(ren);
