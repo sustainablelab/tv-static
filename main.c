@@ -50,7 +50,7 @@ AffLine aff_join_of_points(AffPoint A, AffPoint B)
     return l;
 }
 AffPoint aff_meet_of_lines(AffLine l1, AffLine l2)
-{ // Return meet of lines l1 and l2 <--? If lines don't intersect, cannot always
+{ // Return meet of lines l1 and l2 <--? What happens if lines don't intersect?
     /* *************DOC***************
      * TODO:
      * - Return meet by passing meet as a pointer arg
@@ -237,13 +237,32 @@ int main(int argc, char *argv[])
             }
             // Up/Down UI checks that Y is between topmost and botmost
             AffLine scanline = {0, 1, Y};                   // line : y = Y
-            SDL_SetRenderDrawColor(ren, 100, 200, 10, 180);     // Set intersection color
             for( int i=0; i<(poly_cnt-1); i++ )
             {
                 AffPoint meet = aff_meet_of_lines(scanline, sides[i]);
-                // DEBUG: draw each meet
-                SDL_FRect r = {meet.x, meet.y, 5, 5};
-                SDL_RenderDrawRectF(ren, &r);
+                // DEBUG: draw each meet : PASS
+                // DEBUG: only draw the meet if it is on the poly seg : PASS
+                AffVec u = aff_vec_from_points(poly[i], meet);
+                AffVec v = aff_vec_from_points(poly[i], poly[i+1]);
+                float lambda;                               // scaling factor btwn u and v
+                if(  u.x != 0  ) { lambda = u.x / v.x; }    // Use vec.x if non-zero
+                else             { lambda = u.y / v.y; }    // Use vec.y if vec.x is 0
+                if(  (lambda >= 0)&&(lambda <= 1)  )        // The meet is on the poly seg
+                {
+                    { // highlight meet
+                        SDL_SetRenderDrawColor(ren, 100, 200, 10, 180);
+                        SDL_FRect r = {meet.x - 2, meet.y - 2, 4, 4};
+                        SDL_RenderDrawRectF(ren, &r);
+                    }
+                    { // highlight polygon point
+                        SDL_SetRenderDrawColor(ren, 200, 200, 10, 180);
+                        SDL_FRect r = {poly[i].x - 2, poly[i].y - 2, 4, 4};
+                        SDL_RenderDrawRectF(ren, &r);
+                    }
+                    { // draw vector u
+                        SDL_RenderDrawLineF(ren, poly[i].x, poly[i].y, meet.x, meet.y);
+                    }
+                }
                 /* // Draw the portions of the scan line that are inside the polygon */
                 /* SDL_RenderDrawLineF(ren, wI.w/2, y, wI.w, y); */
             }
