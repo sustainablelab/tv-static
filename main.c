@@ -67,10 +67,10 @@ AffPoint aff_meet_of_lines(AffLine l1, AffLine l2)
 
 
 // View polygon artwork
-AffPoint view_o = {100, 100};                                   // origin
-int view_s = 20;                                                // scale
+AffPoint view_o = {200, 0};                                   // origin
+int view_s = 122;                                             // scale
 // DEBUG by moving scanline manually
-int Y = 0;                                                      // scanline y set by UI
+int Y = 0;                                                    // scanline y set by UI
 
 void shutdown()
 {
@@ -144,8 +144,8 @@ int main(int argc, char *argv[])
             {
                 if(  kmod&KMOD_SHIFT  )
                 {
-                    if(  k[SDL_SCANCODE_UP]  ) {view_s++; if(view_s>500) {view_s=500;}}
-                    if(  k[SDL_SCANCODE_DOWN]  ) {view_s--; if(view_s<1) {view_s=1;}}
+                    /* if(  k[SDL_SCANCODE_UP]  ) {view_s++; if(view_s>500) {view_s=500;}} */
+                    /* if(  k[SDL_SCANCODE_DOWN]  ) {view_s--; if(view_s<1) {view_s=1;}} */
                 }
                 else
                 {
@@ -168,10 +168,14 @@ int main(int argc, char *argv[])
                         case SDLK_UP:
                               if(  kmod&KMOD_CTRL  )
                               { Y--; if(Y<topmost.y) {Y=topmost.y;} }
+                              else if(  kmod&KMOD_SHIFT  )
+                              {view_s++; if(view_s>500) {view_s=500;}}
                               break;
                         case SDLK_DOWN:
                               if(  kmod&KMOD_CTRL  )
                               { Y++; if(Y>botmost.y) {Y=botmost.y;} }
+                              else if(  kmod&KMOD_SHIFT  )
+                              {view_s--; if(view_s<1) {view_s=1;}}
                               break;
                         default: break;
                     }
@@ -201,9 +205,10 @@ int main(int argc, char *argv[])
             SDL_FRect highlight = {.x=botmost.x-s, .y=botmost.y-s, .w=s*2, .h=s*2};
             SDL_RenderDrawRectF(ren, &highlight);
         }
-        if(0) // scanline : fill polygon (TODO: find intersections)
+        if(1) // scanline : fill polygon (TODO: find intersections)
         { // Fill the polygon
-            int y=topmost.y;                                    // Scan-line method
+            /* int y=topmost.y;                                    // Scan-line method */
+            float y=topmost.y;                                    // Scan-line method
             SDL_SetRenderDrawColor(ren, 200, 100, 10, 180);     // Set fill color
             // Make a list of lines out of the polygon sides
             AffLine sides[poly_cnt-1];
@@ -213,20 +218,67 @@ int main(int argc, char *argv[])
             }
             while(  y<botmost.y  )
             {
-                // New scanline
-                AffLine scanline = {0, 1, y};                   // line : y = topmost
+                AffLine scanline = {0, 1, y};                   // Line : y = constant
                 // Find intersection of scanline with each side
-                // TODO: step line up down with arrow keys instead of looping
+                int meet_cnt = 0;                               // Count intersections
+                AffPoint meets[poly_cnt];                       // At most 1 meet per poly seg
                 for( int i=0; i<(poly_cnt-1); i++ )
                 {
                     AffPoint meet = aff_meet_of_lines(scanline, sides[i]);
-                    // DEBUG: draw each meet
-                    SDL_FRect r = {meet.x, meet.y, 5, 5};
-                    SDL_RenderDrawRectF(ren, &r);
+                    // DEBUG: does this fix bugs where fill line is dropped?
+                    // Nope, makes it worse!
+                    /* meet.x = (int)meet.x; meet.y = (int)meet.y; */
+
                     // Draw the portions of the scan line that are inside the polygon
-                    SDL_RenderDrawLineF(ren, wI.w/2, y, wI.w, y);
+                    // Vector u : from a vertex on this side to the meet
+                    AffVec u = aff_vec_from_points(poly[i], meet);
+                    // Vector v : the two vertices that defined this side
+                    AffVec v = aff_vec_from_points(poly[i], poly[i+1]);
+                    bool float_error = true;
+                    float lambda;                               // scaling factor btwn u and v
+                    { // Lambda is just a ratio, but floating point error makes this tricky.
+                        // Get this wrong and every once in a while a line is dropped or doubled.
+                        /* if(  u.y != 0  ){ lambda = u.y / v.y; } */
+                        /* else            { lambda = u.x / v.x; } */
+                        float epsilon = 0.01;                       // Floating point error
+                        if(  u.x != 0  )     // Use vec.x if non-zero
+                        {
+                            lambda = u.x / v.x;
+                            if(  (v.x > epsilon) || (v.x < -1*epsilon) ) {float_error = false;}
+                        }
+                        else     // Use vec.y if vec.x is 0
+                        {
+                            lambda = u.y / v.y;
+                            if(  (v.y > epsilon) || (v.y < -1*epsilon) ) {float_error = false;}
+                        }
+                    }
+                    // TODO:
+                    // I don't want both lambda=0 and lambda=1, pick one.
+                    // The reason is I get two fill lines at the same y-value.
+                    // If the color has alpha, then the two lines overlap and it
+                    // doesn't look good.
+                    // TODO:
+                    // The calculation of the meet is *slightly* off. Why?
+                    // This causes the occasional fill line to get dropped.
+                    if(  float_error == false  )
+                    {
+                        if(  (lambda>0) && (lambda<=1)  )          // The meet is on the poly seg
+                        {
+                            meets[meet_cnt] = meet;                 // Store this meet
+                            meet_cnt++;                             // Track number of meets
+                        }
+                    }
                 }
-                y++;
+                { // Draw the portions of the scan line that are inside the polygon
+                    for( int i=0; i<meet_cnt-1; i++ )
+                    {
+                        // TODO: add an even/odd check on i to catch polygon cutouts
+                        SDL_SetRenderDrawColor(ren, 200, 200, 10, 100);     // Set fill color
+                        // Very important: do not use meets[i+1].y
+                        SDL_RenderDrawLineF(ren, meets[i].x, meets[i].y, meets[i+1].x, meets[i].y);
+                    }
+                }
+                y++;                                            // Advance scanline
             }
         }
         if(1) // DEBUG : stepping line to test my intersection algorithm
@@ -298,7 +350,10 @@ int main(int argc, char *argv[])
                 for( int i=0; i<meet_cnt-1; i++ )
                 {
                     SDL_SetRenderDrawColor(ren, 200, 100, 10, 180);     // Set fill color
-                    SDL_RenderDrawLineF(ren, meets[i].x, meets[i].y, meets[i+1].x, meets[i+1].y);
+                    // Very important: do not use meets[i+1].y
+                    // The line MUST be horizontal. But sometimes the arithmetic
+                    // works out to make meets[i+1].y one pixel off from meets[i].y
+                    SDL_RenderDrawLineF(ren, meets[i].x, meets[i].y, meets[i+1].x, meets[i].y);
                 }
             }
 
